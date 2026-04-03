@@ -1,0 +1,371 @@
+---
+title: "data: Baseline Characteristics (Table 1) and Drugs per Class (Table S2)"
+author: "Till Julius Adam"
+date: "2025-02-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(dplyr)
+library(writexl)
+library(gtsummary)
+library(flextable)
+library(officer)
+
+
+data <- read_excel("data_simulated.xlsx")
+data$Any_DE <- as.factor(data$Any_DE)
+data$Any_Overdiagnosis <- as.factor(data$Any_Overdiagnosis)
+data$Any_Underdiagnosis <- as.factor(data$Any_Underdiagnosis)
+data <- data[data$ExamType == 1, ]
+data$Adopted[data$Adopted == -7] <- NA
+data$FollowUp_yn <- as.factor(data$FollowUp_yn)
+```
+
+```{r}
+# Check the variable
+table(data$FollowUp_yn, useNA = "always")
+class(data$FollowUp_yn)
+str(data$FollowUp_yn)
+```
+
+
+Descriptive Characteristics Table
+```{r}
+generate_characteristics_table <- function(data) {
+  data %>%
+    select(
+      Any_DE, Any_Overdiagnosis, Any_Underdiagnosis,
+      Nr_Overdiagnosis, Nr_Underdiagnosis,
+
+      # Categorical
+      sex, race, AdoptedPatient, Siblings, Family_History_Any, EducationPatient, OccupPaitentHighest, Smoking, Any_Trauma, FollowUp_yn,
+
+      Antipsychotic_discharge,
+      Aripiprazole_discharge, Risperidone_discharge, Quetiapine_discharge, Ziprasidone_discharge, Paliperidone_discharge, Chlorpromazine_discharge,
+      Olanzapine_discharge, Latuda_discharge,
+
+      Antidepressant_discharge,
+      Citalopram_discharge, Escitalopram_discharge, Fluoxetine_discharge, Venlafaxine_discharge, Cymbalta_discharge, Bupropion_discharge,
+      Sertraline_discharge, Elavil_discharge, Paroxetine_discharge, Amitriptyline_discharge, Mirtazapine_discharge, Pristiq_discharge,
+      Luvox_discharge, Nortriptyline_discharge, Trazodone_discharge,
+
+      Mood_Stabilizer_discharge, Lithium_discharge, Lamotrigine_discharge, Depakote_discharge, `Divalproex Sodium Er_discharge`,
+
+      Anxiolytic_Hypnotic_discharge, Lorazepam_discharge, Clonazepam_discharge, Diphenhydramine_discharge, Hydroxyzine_discharge, Buspar_discharge,
+      Melatonin_discharge,
+
+      Stimulant_discharge, Concerta_discharge,
+      Adderall_discharge, Focalin_discharge, Vyvanse_discharge, Strattera_discharge, `Guanfacine HC_discharge`, Clonidine_discharge,
+
+      # Continuous
+      Age, BMI, SES_Average,
+      mean_followup,
+      YMRS_total_48h, YMRS_total_1m, MADRS_total, GAF_Current, BeckAnxietyInventoryPWsum, QoL,
+
+      BPRS_total, SomaticConcern, Anxiety, EmotionalWithdrawal, ConceptualDisorg, GuiltFeelings, Tension, MannerismsPosturing, Grandiosity,
+      DepressiveMood, Hostility, Suspiciousness, HallucinatoryBehav, MotorRetard, Uncooperativeness, UnusualThoughtContent, BluntedAffect,
+      Excitement, Disorientation,
+
+      SeverityOfIllness, SeverityPositiveSx, SeverityDepression, SeverityAnxiety, SeverityMoodSwings,
+
+      SUMD_total, SUMD1, SUMD2, SUMD3,
+
+      GBI_Depression_total, GBI_Hypomanic_total,
+
+      ROAS_POW_total, ROAS_P6M_total,
+
+      HVLTTScore, CPT_TScore, FLUSTscore, WMS3TScore, TMTATscore, NABTscore, WRAT3SS, BACSTScore
+    ) %>%
+    tbl_summary(
+      #by= Any_DE,
+      include = everything(),
+      statistic = list(
+        all_categorical() ~ "{n} ({p})",
+        all_continuous() ~ "{mean} ({sd}) [{min}, {max}]",
+        mean_followup ~ "{mean} ({sd}) [{p25}, {p75}]"
+      ),
+      digits = list(
+        all_categorical() ~ c(0, 1),
+        all_continuous() ~ c(2,2,2,2)
+      ),
+        type = list(
+              Nr_Overdiagnosis ~ "continuous",
+              Nr_Underdiagnosis ~ "continuous",
+              Age ~ "continuous",
+              BMI ~ "continuous",
+              SES_Average ~ "continuous",
+              mean_followup  ~ "continuous",
+
+              YMRS_total_48h ~ "continuous",
+              YMRS_total_1m ~ "continuous",
+              MADRS_total ~ "continuous",
+              GAF_Current ~ "continuous",
+              BeckAnxietyInventoryPWsum ~ "continuous",
+              QoL ~ "continuous",
+
+              BPRS_total ~ "continuous",
+              SomaticConcern ~ "continuous",
+              Anxiety ~ "continuous",
+              EmotionalWithdrawal ~ "continuous",
+              ConceptualDisorg ~ "continuous",
+              GuiltFeelings ~ "continuous",
+              Tension ~ "continuous",
+              MannerismsPosturing ~ "continuous",
+              Grandiosity ~ "continuous",
+              DepressiveMood ~ "continuous",
+              Hostility ~ "continuous",
+              Suspiciousness ~ "continuous",
+              HallucinatoryBehav ~ "continuous",
+              MotorRetard ~ "continuous",
+              Uncooperativeness ~ "continuous",
+              UnusualThoughtContent ~ "continuous",
+              BluntedAffect ~ "continuous",
+              Excitement ~ "continuous",
+              Disorientation ~ "continuous",
+
+              SeverityOfIllness ~ "continuous",
+              SeverityPositiveSx ~ "continuous",
+              SeverityDepression ~ "continuous",
+              SeverityAnxiety ~ "continuous",
+              SeverityMoodSwings ~ "continuous",
+
+              SUMD_total ~ "continuous",
+              SUMD1 ~ "continuous",
+              SUMD2 ~ "continuous",
+              SUMD3 ~ "continuous",
+
+              GBI_Depression_total ~ "continuous",
+              GBI_Hypomanic_total ~ "continuous",
+
+              ROAS_POW_total ~ "continuous",
+              ROAS_P6M_total ~ "continuous",
+
+              HVLTTScore ~ "continuous",
+              CPT_TScore ~ "continuous",
+              FLUSTscore ~ "continuous",
+              WMS3TScore ~ "continuous",
+              TMTATscore ~ "continuous",
+              NABTscore ~ "continuous",
+              WRAT3SS ~ "continuous",
+              BACSTScore ~ "continuous"
+          ),
+      missing = "no"
+    ) %>%
+    #add_overall() %>%
+    modify_header(label ~ "Characteristic") %>%
+    modify_table_body(
+      ~ .x %>% filter(!(
+# --- Demographics / exposures ---
+            (variable == "Any_DE" & label == "0") |
+            (variable == "Any_Overdiagnosis" & label == "0") |
+            (variable == "Any_Underdiagnosis" & label == "0") |
+            (variable == "AdoptedPatient" & label == "0") |
+            (variable == "Siblings" & label == "0") |
+            (variable == "Family_History_Any" & label == "0") |
+            (variable == "Smoking" & label == "0") |
+            (variable == "Any_Trauma" & label == "0") |
+            (variable == "FollowUp_yn" & label == "0") |
+
+            # --- Antipsychotics ---
+            (variable == "Antipsychotic_discharge" & label == "0") |
+            (variable == "Aripiprazole_discharge" & label == "0") |
+            (variable == "Risperidone_discharge" & label == "0") |
+            (variable == "Quetiapine_discharge" & label == "0") |
+            (variable == "Ziprasidone_discharge" & label == "0") |
+            (variable == "Paliperidone_discharge" & label == "0") |
+            (variable == "Chlorpromazine_discharge" & label == "0") |
+            (variable == "Olanzapine_discharge" & label == "0") |
+            (variable == "Latuda_discharge" & label == "0") |
+
+            # --- Antidepressants ---
+            (variable == "Antidepressant_discharge" & label == "0") |
+            (variable == "Citalopram_discharge" & label == "0") |
+            (variable == "Escitalopram_discharge" & label == "0") |
+            (variable == "Fluoxetine_discharge" & label == "0") |
+            (variable == "Venlafaxine_discharge" & label == "0") |
+            (variable == "Cymbalta_discharge" & label == "0") |
+            (variable == "Bupropion_discharge" & label == "0") |
+            (variable == "Sertraline_discharge" & label == "0") |
+            (variable == "Elavil_discharge" & label == "0") |
+            (variable == "Paroxetine_discharge" & label == "0") |
+            (variable == "Amitriptyline_discharge" & label == "0") |
+            (variable == "Mirtazapine_discharge" & label == "0") |
+            (variable == "Pristiq_discharge" & label == "0") |
+            (variable == "Luvox_discharge" & label == "0") |
+            (variable == "Nortriptyline_discharge" & label == "0") |
+            (variable == "Trazodone_discharge" & label == "0") |
+
+            # --- Mood stabilizers ---
+            (variable == "Mood_Stabilizer_discharge" & label == "0") |
+            (variable == "Lithium_discharge" & label == "0") |
+            (variable == "Lamotrigine_discharge" & label == "0") |
+            (variable == "Depakote_discharge" & label == "0") |
+            (variable == "Divalproex Sodium Er_discharge" & label == "0") |
+
+            # --- Anxiolytics / hypnotics ---
+            (variable == "Anxiolytic_Hypnotic_discharge" & label == "0") |
+            (variable == "Lorazepam_discharge" & label == "0") |
+            (variable == "Clonazepam_discharge" & label == "0") |
+            (variable == "Diphenhydramine_discharge" & label == "0") |
+            (variable == "Hydroxyzine_discharge" & label == "0") |
+            (variable == "Buspar_discharge" & label == "0") |
+            (variable == "Melatonin_discharge" & label == "0") |
+
+            # --- Stimulants ---
+            (variable == "Stimulant_discharge" & label == "0") |
+            (variable == "Concerta_discharge" & label == "0") |
+            (variable == "Adderall_discharge" & label == "0") |
+            (variable == "Focalin_discharge" & label == "0") |
+            (variable == "Vyvanse_discharge" & label == "0") |
+            (variable == "Strattera_discharge" & label == "0") |
+            (variable == "Guanfacine HC_discharge" & label == "0") |
+            (variable == "Clonidine_discharge" & label == "0")
+      ))
+    )
+}
+
+characteristics_table <- generate_characteristics_table(data)
+characteristics_df <- as_tibble(characteristics_table)
+characteristics_df
+```
+
+
+Write to word using flextable
+```{r}
+# Set default flextable properties for APA format
+set_flextable_defaults(
+  font.family = "Arial",
+  font.size = 9,  # APA requires 12pt font
+  padding.bottom = 3,
+  padding.top = 3,
+  padding.left = 2,
+  padding.right = 2,
+  text.align = "left",  # Left-align text for readability
+  line_spacing = 2  # Double-spacing as per APA norms
+)
+
+# Adjust flextable for categorical variables with APA style
+ft <- flextable(characteristics_df) %>%
+  theme_vanilla() %>%  # Base style
+  border_outer(border = fp_border(color = "black", width = 1)) %>%  # Keep only outer borders
+  border_remove() %>%  # Remove all inner borders
+  hline_top(border = fp_border(color = "black", width = 1), part = "header") %>%  # Top border for header
+  hline(border = fp_border(color = "black", width = 1), part = "header") %>%  # Bottom border for header
+  align(align = "left", j = 1, part = "all") %>%  # Left-align first column (stub)
+  align(align = "center", part = "header") %>%  # Center column headings
+  bold(part = "header") %>%  # Bold headers
+  width(j = 1, width = 1.75) %>%  # Stub column slightly wider
+  width(j = 2, width = 1) %>%
+  set_caption("Table 1*") %>%  # APA-style numbering & italicized title
+  add_footer_lines("Note. Include general, specific, and probability notes here.")  # APA-style note
+
+# Page layout for Word document
+margins <- page_mar(
+  bottom = 1,
+  top = 1,
+  right = 1,
+  left = 1
+)
+format_table_wide <- prop_section(
+  page_margins = margins
+)
+
+# Save the flextable as a Word document
+save_as_docx(ft,
+             path = "Table 1_Baseline Characteristics.docx",
+             pr_section = format_table_wide)
+```
+
+
+Table S2: Drugs per Class at Baseline (Discharge)
+```{r}
+N_total <- nrow(data)
+
+# Define drugs by class (column name -> display name)
+drug_classes <- list(
+  Antipsychotics = c(
+    Aripiprazole_discharge = "Aripiprazole",
+    Quetiapine_discharge = "Quetiapine",
+    Risperidone_discharge = "Risperidone",
+    Chlorpromazine_discharge = "Chlorpromazine",
+    Ziprasidone_discharge = "Ziprasidone",
+    Paliperidone_discharge = "Paliperidone",
+    Olanzapine_discharge = "Olanzapine",
+    Latuda_discharge = "Latuda"
+  ),
+  Antidepressants = c(
+    Fluoxetine_discharge = "Fluoxetine",
+    Sertraline_discharge = "Sertraline",
+    Escitalopram_discharge = "Escitalopram",
+    Citalopram_discharge = "Citalopram",
+    Bupropion_discharge = "Bupropion",
+    Venlafaxine_discharge = "Venlafaxine",
+    Paroxetine_discharge = "Paroxetine",
+    Trazodone_discharge = "Trazodone",
+    Mirtazapine_discharge = "Mirtazapine"
+  ),
+  `Mood Stabilizers` = c(
+    Lithium_discharge = "Lithium",
+    Lamotrigine_discharge = "Lamotrigine",
+    Depakote_discharge = "Depakote/Divalproex"
+  ),
+  `Anxiolytics/Hypnotics` = c(
+    Clonazepam_discharge = "Clonazepam",
+    Lorazepam_discharge = "Lorazepam",
+    Diphenhydramine_discharge = "Diphenhydramine",
+    Hydroxyzine_discharge = "Hydroxyzine",
+    Buspar_discharge = "Buspar"
+  ),
+  Stimulants = c(
+    `Guanfacine HC_discharge` = "Guanfacine HC",
+    Strattera_discharge = "Strattera (Atomoxetine)",
+    Concerta_discharge = "Concerta",
+    Adderall_discharge = "Adderall",
+    Focalin_discharge = "Focalin",
+    Vyvanse_discharge = "Vyvanse",
+    Clonidine_discharge = "Clonidine"
+  )
+)
+
+# Class-level columns
+class_cols <- c(
+  Antipsychotics = "Antipsychotic_discharge",
+  Antidepressants = "Antidepressant_discharge",
+  `Mood Stabilizers` = "Mood_Stabilizer_discharge",
+  `Anxiolytics/Hypnotics` = "Anxiolytic_Hypnotic_discharge",
+  Stimulants = "Stimulant_discharge"
+)
+
+# Build frequency table
+rows <- list()
+for (cls in names(drug_classes)) {
+  # Class-level row
+  class_col <- class_cols[[cls]]
+  class_n <- sum(data[[class_col]] == 1, na.rm = TRUE)
+  class_pct <- round(100 * class_n / N_total, 1)
+  rows[[length(rows) + 1]] <- data.frame(
+    Class = cls, Drug = paste0(cls, " (any)"),
+    N = class_n, Percent = class_pct, stringsAsFactors = FALSE
+  )
+  # Individual drug rows
+  drugs <- drug_classes[[cls]]
+  for (col_name in names(drugs)) {
+    drug_n <- sum(data[[col_name]] == 1, na.rm = TRUE)
+    drug_pct <- round(100 * drug_n / N_total, 1)
+    rows[[length(rows) + 1]] <- data.frame(
+      Class = "", Drug = paste0("
+  ", drugs[[col_name]]),
+      N = drug_n, Percent = drug_pct, stringsAsFactors = FALSE
+    )
+  }
+}
+
+table_s2 <- bind_rows(rows)
+table_s2$`N (%)` <- paste0(table_s2$N, " (", table_s2$Percent, ")")
+table_s2_out <- table_s2 %>% select(Class, Drug, `N (%)`)
+
+table_s2_out
+```

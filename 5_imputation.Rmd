@@ -1,0 +1,219 @@
+---
+title: "data: Multiple Imputation (MICE) for All Disorder Categories"
+author: "Till Julius Adam"
+date: "2026-04-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readxl)
+library(dplyr)
+library(mice)
+library(writexl)
+```
+
+# Define disorders and shared variables
+
+```{r}
+disorders <- c(
+  "AttentionDeficitHyperactivityDisorder",
+  "SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  "BipolarAndRelatedDisorder",
+  "DepressiveDisorder",
+  "AnxietyDisorder",
+  "TraumaAndStressorRelatedDisorder",
+  "DisruptiveImpulseControlAndConductDisorders",
+  "SubstanceAbuse"
+)
+
+short_names <- c(
+  "ADHD", "Psychosis", "Bipolar", "Depression",
+  "Anxiety", "Trauma", "Conduct", "Substance"
+)
+
+# Variables shared across all disorder imputations (excluding ID and SDM column)
+shared_vars <- c(
+  "Nr_Diag_R",
+  "R_AttentionDeficitHyperactivityDisorder",
+  "R_SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  "R_BipolarAndRelatedDisorder",
+  "R_DepressiveDisorder",
+  "R_AnxietyDisorder",
+  "R_ObsessiveCompulsiveAndRelatedDisorders",
+  "R_TraumaAndStressorRelatedDisorder",
+  "R_FeedingAndEatingDisorders",
+  "R_DisruptiveImpulseControlAndConductDisorders",
+  "R_SubstanceAbuse",
+  "R_PersonalityDisorder",
+  "Ch_AttentionDeficitHyperactivityDisorder",
+  "Ch_SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  "Ch_BipolarAndRelatedDisorder",
+  "Ch_DepressiveDisorder",
+  "Ch_AnxietyDisorder",
+  "Ch_ObsessiveCompulsiveAndRelatedDisorders",
+  "Ch_TraumaAndStressorRelatedDisorder",
+  "Ch_FeedingAndEatingDisorders",
+  "Ch_DisruptiveImpulseControlAndConductDisorders",
+  "Ch_SubstanceAbuse",
+  "Ch_PersonalityDisorder",
+  "sex", "race", "AdoptedPatient", "Siblings", "Family_History_Any", "Smoking",
+  "Age", "BMI", "SES_Average",
+  "YMRS_total_1m", "MADRS_total", "GAF_Current",
+  "SomaticConcern", "Anxiety", "EmotionalWithdrawal", "ConceptualDisorg",
+  "GuiltFeelings", "Tension", "MannerismsPosturing", "Grandiosity",
+  "DepressiveMood", "Hostility", "Suspiciousness", "HallucinatoryBehav",
+  "MotorRetard", "Uncooperativeness", "UnusualThoughtContent", "BluntedAffect",
+  "Excitement", "Disorientation",
+  "SeverityOfIllness",
+  "ROAS_POW_total"
+)
+
+# Method for each shared variable (ID and SDM column always "")
+shared_methods <- c(
+  Nr_Diag_R = "",
+  R_AttentionDeficitHyperactivityDisorder = "",
+  R_SchizophreniaSpectrumAndOtherPsychoticDisorder = "",
+  R_BipolarAndRelatedDisorder = "",
+  R_DepressiveDisorder = "",
+  R_AnxietyDisorder = "",
+  R_ObsessiveCompulsiveAndRelatedDisorders = "",
+  R_TraumaAndStressorRelatedDisorder = "",
+  R_FeedingAndEatingDisorders = "",
+  R_DisruptiveImpulseControlAndConductDisorders = "",
+  R_SubstanceAbuse = "",
+  R_PersonalityDisorder = "",
+  Ch_AttentionDeficitHyperactivityDisorder = "",
+  Ch_SchizophreniaSpectrumAndOtherPsychoticDisorder = "",
+  Ch_BipolarAndRelatedDisorder = "",
+  Ch_DepressiveDisorder = "",
+  Ch_AnxietyDisorder = "",
+  Ch_ObsessiveCompulsiveAndRelatedDisorders = "",
+  Ch_TraumaAndStressorRelatedDisorder = "",
+  Ch_FeedingAndEatingDisorders = "",
+  Ch_DisruptiveImpulseControlAndConductDisorders = "",
+  Ch_SubstanceAbuse = "",
+  Ch_PersonalityDisorder = "",
+  sex = "logreg",
+  race = "polyreg",
+  AdoptedPatient = "logreg",
+  Siblings = "logreg",
+  Family_History_Any = "logreg",
+  Smoking = "logreg",
+  Age = "pmm",
+  BMI = "pmm",
+  SES_Average = "pmm",
+  YMRS_total_1m = "pmm",
+  MADRS_total = "pmm",
+  GAF_Current = "pmm",
+  SomaticConcern = "pmm",
+  Anxiety = "pmm",
+  EmotionalWithdrawal = "pmm",
+  ConceptualDisorg = "pmm",
+  GuiltFeelings = "pmm",
+  Tension = "pmm",
+  MannerismsPosturing = "pmm",
+  Grandiosity = "pmm",
+  DepressiveMood = "pmm",
+  Hostility = "pmm",
+  Suspiciousness = "pmm",
+  HallucinatoryBehav = "pmm",
+  MotorRetard = "pmm",
+  Uncooperativeness = "pmm",
+  UnusualThoughtContent = "pmm",
+  BluntedAffect = "pmm",
+  Excitement = "pmm",
+  Disorientation = "pmm",
+  SeverityOfIllness = "pmm",
+  ROAS_POW_total = "pmm"
+)
+```
+
+# Imputation function
+
+```{r}
+impute_disorder <- function(disorder, short_name) {
+  cat("\n========================================\n")
+  cat("Processing:", short_name, "(", disorder, ")\n")
+  cat("========================================\n")
+
+  sdm_col <- paste0("SDM_", disorder)
+
+  # Read and filter
+  data <- read_excel("data_simulated.xlsx")
+  data <- data[data$ExamType == 1 & !is.na(data[[sdm_col]]), ]
+  data$Adopted[data$Adopted == -7] <- NA
+  # "Other" race excluded due to small cell size; treated as missing and imputed
+  data$race[data$race == "Other"] <- NA
+
+  cat("N after filtering:", nrow(data), "\n")
+
+  # Select variables
+  select_vars <- c("ID", sdm_col, shared_vars)
+  df <- data[, select_vars]
+
+  # Build method vector
+  method_vec <- c(
+    setNames("", "ID"),
+    setNames("", sdm_col),
+    shared_methods
+  )
+
+  # Enforce variable types
+  for (v in names(method_vec)) {
+    if (method_vec[v] == "pmm") {
+      df[[v]] <- as.numeric(as.character(df[[v]]))
+    } else if (method_vec[v] == "logreg") {
+      df[[v]] <- as.factor(df[[v]])
+    }
+  }
+  df$race <- as.factor(df$race)
+
+  # Missingness summary
+  missing_df <- data.frame(
+    Variable = names(df),
+    Pct_Missing = colMeans(is.na(df)) * 100
+  ) %>% arrange(desc(Pct_Missing))
+  print(missing_df)
+
+  # Prediction matrix
+  pred_matrix <- quickpred(df, mincor = 0.3)
+  pred_matrix[, sdm_col] <- 1
+  pred_matrix[sdm_col, sdm_col] <- 0
+
+  # Impute (m=5 datasets, as described in Methods)
+  imputed_data <- mice(df,
+                       m = 5,
+                       method = method_vec,
+                       predictorMatrix = pred_matrix,
+                       seed = 42,
+                       printFlag = FALSE)
+
+  df_complete <- complete(imputed_data, action = 1)
+
+  cat("Rows with any NA:", sum(rowSums(is.na(df_complete)) > 0), "\n")
+  cat("Total NAs:", sum(is.na(df_complete)), "\n")
+  cat("N rows:", nrow(df_complete), "\n")
+
+  # Save mids object for pooled analyses in Script 7
+  rds_file <- paste0("data_IMP_", short_name, ".rds")
+  saveRDS(imputed_data, rds_file)
+  cat("Written mids object:", rds_file, "\n")
+
+  # Also save first completed dataset as xlsx (used by other scripts)
+  out_file <- paste0("data_IMP_", short_name, ".xlsx")
+  write_xlsx(df_complete, out_file)
+  cat("Written:", out_file, "\n")
+
+  return(invisible(imputed_data))
+}
+```
+
+# Run imputation for all 8 disorders
+
+```{r}
+for (i in seq_along(disorders)) {
+  impute_disorder(disorders[i], short_names[i])
+}
+```

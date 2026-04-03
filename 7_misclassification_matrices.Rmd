@@ -1,0 +1,174 @@
+---
+title: "data: Misclassification and Missed Comorbidity Matrices (Figure Data)"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(dplyr)
+library(writexl)
+```
+
+```{r load-data}
+data <- read_excel("data_simulated.xlsx")
+data <- data[data$ExamType == 1, ]
+factor_cols <- c( "sex", "race", "AdoptedPatient", "Siblings", "Family_History_Any", "Smoking", "Antipsychotic_discharge", "Antidepressant_discharge", "Mood_Stabilizer_discharge", "Anxiolytic_Hypnotic_discharge", "Stimulant_discharge", "R_AttentionDeficitHyperactivityDisorder", "R_SchizophreniaSpectrumAndOtherPsychoticDisorder", "R_BipolarAndRelatedDisorder", "R_DepressiveDisorder", "R_AnxietyDisorder", "R_ObsessiveCompulsiveAndRelatedDisorders", "R_TraumaAndStressorRelatedDisorder", "R_FeedingAndEatingDisorders", "R_DisruptiveImpulseControlAndConductDisorders", "R_SubstanceAbuse", "R_PersonalityDisorder", "Ch_AttentionDeficitHyperactivityDisorder", "Ch_SchizophreniaSpectrumAndOtherPsychoticDisorder", "Ch_BipolarAndRelatedDisorder", "Ch_DepressiveDisorder", "Ch_AnxietyDisorder", "Ch_ObsessiveCompulsiveAndRelatedDisorders", "Ch_TraumaAndStressorRelatedDisorder", "Ch_FeedingAndEatingDisorders", "Ch_DisruptiveImpulseControlAndConductDisorders", "Ch_SubstanceAbuse", "Ch_PersonalityDisorder" )
+data[factor_cols] <- lapply(data[factor_cols], as.factor)
+```
+
+```{r misclassification-matrices}
+disorders <- c("AttentionDeficitHyperactivityDisorder", "SchizophreniaSpectrumAndOtherPsychoticDisorder",
+               "BipolarAndRelatedDisorder", "DepressiveDisorder", "AnxietyDisorder",
+               "ObsessiveCompulsiveAndRelatedDisorders", "TraumaAndStressorRelatedDisorder",
+               "FeedingAndEatingDisorders", "DisruptiveImpulseControlAndConductDisorders",
+               "SubstanceAbuse", "PersonalityDisorder")
+
+n <- length(disorders)
+true_confusion <- comorbid_miss <- matrix(0, n, n, dimnames = list(disorders, disorders))
+
+for (i in seq_len(n)) {
+  for (j in seq_len(n)) {
+    if (i == j) next
+    R_A <- data[[paste0("R_", disorders[i])]]
+    R_B <- data[[paste0("R_", disorders[j])]]
+    Ch_A <- data[[paste0("Ch_", disorders[i])]]
+    Ch_B <- data[[paste0("Ch_", disorders[j])]]
+
+    true_confusion[i, j] <- sum(R_A == 1 & R_B == 0 & Ch_A == 0 & Ch_B == 1, na.rm = TRUE)
+    comorbid_miss[i, j] <- sum(R_A == 1 & R_B == 1 & Ch_A == 0 & Ch_B == 1, na.rm = TRUE)
+  }
+}
+```
+
+```{r misclassification-test}
+# Exact binomial test: observed misclassification vs. expected under base rate (one-sided)
+N_total <- nrow(data)
+base_rate_results <- data.frame()
+
+for (i in seq_along(disorders)) {
+  for (j in seq_along(disorders)) {
+    if (i == j) next
+
+    observed <- true_confusion[i, j]
+    R_A <- data[[paste0("R_", disorders[i])]]
+    R_B <- data[[paste0("R_", disorders[j])]]
+    Ch_A <- data[[paste0("Ch_", disorders[i])]]
+    Ch_B <- data[[paste0("Ch_", disorders[j])]]
+
+    n_at_risk <- sum(R_A == 1 & R_B == 0 & Ch_A == 0, na.rm = TRUE)
+    base_rate <- mean(Ch_B == 1, na.rm = TRUE)
+
+    if (n_at_risk > 0 & base_rate > 0) {
+      test <- binom.test(observed, n_at_risk, p = base_rate, alternative = "greater")
+      base_rate_results <- rbind(base_rate_results, data.frame(
+        True_Dx = disorders[i],
+        Mistaken_For = disorders[j],
+        Observed = observed,
+        N_at_risk = n_at_risk,
+        Base_rate = round(base_rate, 2),
+        Expected = round(n_at_risk * base_rate, 2),
+        p = round(test$p.value, 4)
+      ))
+    }
+  }
+}
+base_rate_results$p_adj <- round(p.adjust(base_rate_results$p, method = "BH"), 4)
+```
+
+```{r missed-comorbidity-test}
+# Binomial test with null p=0.5: one-sided test for systematic missed comorbidity asymmetry
+asymmetry_results <- data.frame()
+
+for (i in 1:(n-1)) {
+  for (j in (i+1):n) {
+    a_by_b <- comorbid_miss[i, j]  # A missed when B caught
+    b_by_a <- comorbid_miss[j, i]  # B missed when A caught
+    total <- a_by_b + b_by_a
+
+    if (total > 0) {
+      dominant_count <- max(a_by_b, b_by_a)
+      test <- binom.test(dominant_count, total, p = 0.5, alternative = "greater")
+      asymmetry_results <- rbind(asymmetry_results, data.frame(
+        Disorder_A = disorders[i],
+        Disorder_B = disorders[j],
+        A_missed_B_caught = a_by_b,
+        B_missed_A_caught = b_by_a,
+        Dominant = ifelse(a_by_b > b_by_a, "B overshadows A",
+                         ifelse(b_by_a > a_by_b, "A overshadows B", "Neither")),
+        p = round(test$p.value, 4)
+      ))
+    }
+  }
+}
+asymmetry_results$p_adj <- round(p.adjust(asymmetry_results$p, method = "BH"), 4)
+```
+
+```{r export}
+# Export formatted matrices as Excel tables
+export_matrix <- function(mat, N) {
+  df <- as.data.frame(mat)
+  df[] <- lapply(df, function(x) {
+    ifelse(x == 0, "0 (0.0)", paste0(x, " (", format(round(x / N * 100, 1), nsmall = 1), ")"))
+  })
+  colnames(df) <- paste0("Ch_", colnames(df))
+  df <- cbind(`R_Disorder` = rownames(mat), df)
+  rownames(df) <- NULL
+  df
+}
+
+write_xlsx(export_matrix(true_confusion, N_total), "Table_4a_TrueConfusion_Matrix.xlsx")
+write_xlsx(export_matrix(comorbid_miss, N_total), "Table_4b_ComorbidMiss_Matrix.xlsx")
+
+# Export long-format CSVs for figure_heatmap.py
+export_csv <- function(mat, stat_results, is_misclassification) {
+  rows <- list()
+  disorders_list <- rownames(mat)
+  for (i in seq_along(disorders_list)) {
+    for (j in seq_along(disorders_list)) {
+      if (i == j) next
+      count <- mat[i, j]
+      pct <- round(count / N_total * 100, 2)
+
+      if (is_misclassification) {
+        match <- stat_results[stat_results$True_Dx == disorders_list[i] &
+                              stat_results$Mistaken_For == disorders_list[j], ]
+        p_val <- if (nrow(match) > 0) match$p[1] else NA
+        p_fdr <- if (nrow(match) > 0) match$p_adj[1] else NA
+      } else {
+        # Missed comorbidity: tested as unique pairs (i < j), map both directions
+        if (i < j) {
+          match <- stat_results[stat_results$Disorder_A == disorders_list[i] &
+                                stat_results$Disorder_B == disorders_list[j], ]
+        } else {
+          match <- stat_results[stat_results$Disorder_A == disorders_list[j] &
+                                stat_results$Disorder_B == disorders_list[i], ]
+        }
+        p_val <- if (nrow(match) > 0) match$p[1] else NA
+        p_fdr <- if (nrow(match) > 0) match$p_adj[1] else NA
+      }
+
+      rows[[length(rows) + 1]] <- data.frame(
+        row_disorder = disorders_list[i],
+        col_disorder = disorders_list[j],
+        n = count,
+        pct = pct,
+        p_value = p_val,
+        p_fdr = p_fdr
+      )
+    }
+  }
+  do.call(rbind, rows)
+}
+
+# Write CSVs for figure_heatmap.py
+write.csv(export_csv(true_confusion, base_rate_results, TRUE),
+          "Figure_Data_Misclassification.csv", row.names = FALSE)
+write.csv(export_csv(comorbid_miss, asymmetry_results, FALSE),
+          "Figure_Data_MissedComorbidity.csv", row.names = FALSE)
+
+true_confusion
+comorbid_miss
+```

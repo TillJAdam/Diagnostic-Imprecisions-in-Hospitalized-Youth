@@ -1,0 +1,262 @@
+---
+title: "data: Multivariable Associations with Over/Underdiagnosis"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(glmnet)
+library(readxl)
+library(dplyr)
+library(writexl)
+library(car)
+library(broom)
+library(rcompanion)
+```
+
+```{r config}
+# === DISORDER MAPPING ===
+# Keys: short names used in file names and output
+# Values: SDM column suffix in the imputed data files
+disorders <- list(
+  ADHD       = "AttentionDeficitHyperactivityDisorder",
+  Psychosis  = "SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  Bipolar    = "BipolarAndRelatedDisorder",
+  Depression = "DepressiveDisorder",
+  Anxiety    = "AnxietyDisorder",
+  Trauma     = "TraumaAndStressorRelatedDisorder",
+  Conduct    = "DisruptiveImpulseControlAndConductDisorders",
+  Substance  = "SubstanceAbuse"
+)
+
+directions <- c("over", "under")
+
+# === CANDIDATE PREDICTORS ===
+# These are the only variables eligible for LASSO selection.
+# race will be expanded to dummies; all others used as-is.
+candidate_predictors <- c(
+  "Age", "sex", "race",
+  "SES_Average", "Family_History_Any", "Smoking", "Nr_Diag_R",
+  "YMRS_total_1m", "MADRS_total", "GAF_Current",
+  "SeverityOfIllness", "ROAS_POW_total",
+  # 18 BPRS items
+  "SomaticConcern", "Anxiety", "Depression", "Guilt",
+  "Hostility", "Suspiciousness", "UnusualThoughtContent",
+  "Grandiosity", "HallucinatoryBehavior", "Disorientation",
+  "Conceptualdisorganization", "Bluntedaffect", "Emotionalwithdrawal",
+  "Motorretar", "Tension", "Uncooperativeness",
+  "Excitement", "MannerismsPosturing"
+)
+```
+
+```{r helper-functions}
+# Prepare one completed dataset for modeling
+prepare_df <- function(df, sdm_col, outcome_col, direction, candidate_predictors) {
+  names(df) <- gsub(" ", "_", names(df))
+
+  if (direction == "over") {
+    df <- df %>%
+      filter(.data[[sdm_col]] %in% c("FP", "TN")) %>%
+      mutate(!!outcome_col := as.integer(.data[[sdm_col]] == "FP"))
+  } else {
+    df <- df %>%
+      filter(.data[[sdm_col]] %in% c("FN", "TP")) %>%
+      mutate(!!outcome_col := as.integer(.data[[sdm_col]] == "FN"))
+    if ("Nr_Diag_R" %in% names(df)) df$Nr_Diag_R <- df$Nr_Diag_R - 1
+  }
+
+  available_preds <- intersect(candidate_predictors, names(df))
+  df_model <- df %>% select(all_of(c(outcome_col, available_preds)))
+
+  if ("race" %in% names(df_model)) {
+    df_model$race <- relevel(factor(df_model$race), ref = "White")
+    race_mat <- model.matrix(~ race, data = df_model)[, -1, drop = FALSE]
+    colnames(race_mat) <- gsub("^race", "race_", colnames(race_mat))
+    df_model <- df_model %>% select(-race) %>% bind_cols(as.data.frame(race_mat))
+  }
+
+  factor_vars <- intersect(c("sex", "Family_History_Any", "Smoking"), names(df_model))
+  df_model[factor_vars] <- lapply(df_model[factor_vars], as.factor)
+
+  # Drop constant columns and columns constant within outcome groups
+  drop_cols <- c()
+  for (v in setdiff(names(df_model), outcome_col)) {
+    vals_all <- df_model[[v]]
+    vals_1   <- df_model[[v]][df_model[[outcome_col]] == 1]
+    vals_0   <- df_model[[v]][df_model[[outcome_col]] == 0]
+    if (length(unique(vals_all)) <= 1 ||
+        length(unique(vals_1)) <= 1 ||
+        length(unique(vals_0)) <= 1) {
+      drop_cols <- c(drop_cols, v)
+    }
+  }
+  if (length(drop_cols) > 0) df_model <- df_model %>% select(-all_of(drop_cols))
+
+  df_model[complete.cases(df_model), ]
+}
+
+# Run LASSO on one dataset, return selected predictor names (original column names)
+run_lasso <- function(df_model, outcome_col, seed = 123) {
+  lasso_formula <- as.formula(paste(outcome_col, "~ ."))
+  X <- model.matrix(lasso_formula, data = df_model)[, -1, drop = FALSE]
+  y <- df_model[[outcome_col]]
+
+  set.seed(seed)
+  cv_lasso <- tryCatch(
+    cv.glmnet(X, y, family = "binomial", alpha = 1),
+    error = function(e) { message("  LASSO failed: ", e$message); NULL }
+  )
+  if (is.null(cv_lasso)) return(character(0))
+
+  lasso_coefs   <- coef(cv_lasso, s = "lambda.min")
+  selected_vars <- setdiff(rownames(lasso_coefs)[which(lasso_coefs != 0)], "(Intercept)")
+  if (length(selected_vars) == 0) return(character(0))
+
+  # Map dummy names back to original predictor columns
+  all_pred_cols <- setdiff(names(df_model), outcome_col)
+  predictor_names <- unique(sapply(selected_vars, function(sv) {
+    matches <- all_pred_cols[startsWith(sv, all_pred_cols)]
+    if (length(matches) > 0) return(matches[which.max(nchar(matches))])
+    matches2 <- all_pred_cols[sapply(all_pred_cols, function(p) grepl(paste0("^", p), sv))]
+    if (length(matches2) > 0) return(matches2[which.max(nchar(matches2))])
+    return(sv)
+  }))
+  intersect(unique(predictor_names), all_pred_cols)
+}
+
+# VIF check: iteratively remove variables with VIF > 10
+vif_check <- function(formula, data) {
+  repeat {
+    fit <- glm(formula, data = data, family = binomial)
+    preds <- attr(terms(fit), "term.labels")
+    if (length(preds) <= 1) break
+    v <- tryCatch(car::vif(fit), error = function(e) NULL)
+    if (is.null(v)) break
+    # vif() returns named vector or matrix (for factors with >2 levels)
+    if (is.matrix(v)) v <- v[, "GVIF"]
+    if (all(v < 10)) break
+    worst <- names(which.max(v))
+    message("  Removing VIF>10: ", worst, " (VIF=", round(max(v), 1), ")")
+    preds <- setdiff(preds, worst)
+    if (length(preds) == 0) break
+    formula <- as.formula(paste(deparse(formula[[2]]), "~", paste(preds, collapse = " + ")))
+  }
+  formula
+}
+```
+
+```{r run-all}
+# === COLLECT RESULTS ACROSS ALL DISORDER x DIRECTION COMBINATIONS ===
+all_results <- list()
+
+for (dis_short in names(disorders)) {
+  dis_long <- disorders[[dis_short]]
+  sdm_col  <- paste0("SDM_", dis_long)
+
+  # Load mids object from Script 6
+  rds_path <- paste0("data_IMP_", dis_short, ".rds")
+  if (!file.exists(rds_path)) {
+    message("File not found, skipping: ", rds_path)
+    next
+  }
+  mids_obj <- readRDS(rds_path)
+  m <- mids_obj$m
+
+  for (direction in directions) {
+    label <- paste0(dis_short, "_", direction)
+    message("=== ", label, " ===")
+
+    outcome_col <- paste0(direction, "_", dis_long)
+
+    # --- LASSO on each imputed dataset, majority-vote variable selection ---
+    all_selected <- list()
+    ref_df <- NULL  # keep first dataset for n_cases check
+
+    for (k in 1:m) {
+      df_k <- complete(mids_obj, action = k)
+      df_model_k <- prepare_df(df_k, sdm_col, outcome_col, direction, candidate_predictors)
+      if (k == 1) ref_df <- df_model_k
+      sel <- run_lasso(df_model_k, outcome_col, seed = 123 + k)
+      all_selected[[k]] <- sel
+    }
+
+    n_cases <- sum(ref_df[[outcome_col]] == 1, na.rm = TRUE)
+    if (n_cases < 10) {
+      message("  Skipping (only ", n_cases, " cases)")
+      next
+    }
+
+    # Majority vote: keep variables selected in >= ceil(m/2) imputations
+    all_vars <- unlist(all_selected)
+    var_counts <- table(all_vars)
+    predictor_names <- names(var_counts[var_counts >= ceiling(m / 2)])
+
+    if (length(predictor_names) == 0) {
+      message("  No variables selected by majority-vote LASSO")
+      next
+    }
+
+    message("  Majority-vote LASSO selected: ", paste(predictor_names, collapse = ", "))
+
+    # --- VIF check on first imputed dataset ---
+    final_formula <- as.formula(paste(outcome_col, "~", paste(predictor_names, collapse = " + ")))
+    final_formula <- vif_check(final_formula, ref_df)
+    predictor_names <- attr(terms(final_formula), "term.labels")
+
+    if (length(predictor_names) == 0) {
+      message("  No variables remain after VIF check")
+      next
+    }
+
+    # --- Fit logistic regression on each imputed dataset and pool ---
+    fits <- list()
+    r2_vals <- numeric(m)
+
+    for (k in 1:m) {
+      df_k <- complete(mids_obj, action = k)
+      df_model_k <- prepare_df(df_k, sdm_col, outcome_col, direction, candidate_predictors)
+      fit_k <- glm(final_formula, data = df_model_k, family = binomial)
+      fits[[k]] <- fit_k
+      r2_k <- nagelkerke(fit_k)
+      r2_vals[k] <- r2_k$Pseudo.R.squared.for.model.vs.null[3]
+    }
+
+    # Pool using Rubin's rules via mice::pool()
+    pooled <- pool(fits)
+    pooled_summary <- summary(pooled, conf.int = TRUE, conf.level = 0.95)
+    r2_val <- mean(r2_vals)
+
+    # --- Tidy output ---
+    model_tidy <- pooled_summary %>%
+      filter(term != "(Intercept)") %>%
+      mutate(
+        Disorder      = dis_short,
+        Direction     = direction,
+        N_total       = nrow(ref_df),
+        N_cases       = n_cases,
+        OR            = round(exp(estimate), 2),
+        OR_low        = round(exp(`2.5 %`), 2),
+        OR_high       = round(exp(`97.5 %`), 2),
+        `OR (95% CI)` = paste0(
+          format(OR, nsmall = 2), " (",
+          format(OR_low, nsmall = 2), ", ",
+          format(OR_high, nsmall = 2), ")"
+        ),
+        `p-value` = ifelse(p.value < 0.0001, "<0.0001",
+                           format(round(p.value, 4), nsmall = 4)),
+        `Nagelkerke R2` = format(round(r2_val, 3), nsmall = 3)
+      ) %>%
+      select(Disorder, Direction, term, `OR (95% CI)`, `p-value`,
+             `Nagelkerke R2`, N_total, N_cases)
+
+    all_results[[label]] <- model_tidy
+  }
+}
+
+# === COMBINE RESULTS ===
+results_df <- if (length(all_results) > 0) bind_rows(all_results) else data.frame()
+
+results_df
+```

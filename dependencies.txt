@@ -1,0 +1,30 @@
+Dependencies for: Diagnostic Imprecision in Hospitalized Youth
+================================================================
+
+Environment used:
+  R version 4.4.3
+  RStudio (latest recommended)
+
+R packages (install with install.packages("PACKAGE_NAME")):
+  readxl       (1.4.3)   - Read Excel files
+  writexl      (1.5.0)   - Write Excel files
+  dplyr        (1.1.4)   - Data manipulation
+  tidyr        (1.3.1)   - Data tidying
+  gtsummary    (2.1.0)   - Summary tables
+  flextable    (0.9.7)   - Table formatting
+  officer      (0.6.7)   - Word document output
+  mice         (3.17.0)  - Multiple imputation
+  glmnet       (4.1.8)   - LASSO regularization
+  car          (3.1.3)   - VIF and regression diagnostics
+  broom        (1.0.7)   - Tidy model output
+  rcompanion   (2.5.0)   - Nagelkerke R-squared
+  lme4         (1.1.35)  - Linear mixed-effects models
+  lmerTest     (3.1.3)   - P-values for mixed models
+  glue         (1.8.0)   - String interpolation
+
+Python packages (for figure generation):
+  numpy
+  matplotlib
+  pandas
+
+Note: Code should work with updated package versions.

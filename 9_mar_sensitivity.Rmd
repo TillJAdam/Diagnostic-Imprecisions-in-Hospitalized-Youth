@@ -1,0 +1,89 @@
+---
+title: "data: Pattern-Mixture Models for Missing-at-Random Assessment (Table S4)"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(dplyr)
+library(writexl)
+library(lme4)
+library(lmerTest)
+```
+
+```{r load-data}
+data <- read_excel("data_simulated.xlsx")
+data$ExamType <- factor(data$ExamType, levels = c(1, 2))
+```
+
+```{r pmm-analysis}
+outcomes <- c(
+  "YMRS_total_1m", "MADRS_total", "GAF_Current",
+  "SeverityOfIllness", "ROAS_POW_total",
+
+  "BPRS_total",
+  "SomaticConcern", "Anxiety", "EmotionalWithdrawal", "ConceptualDisorg",
+  "GuiltFeelings", "Tension", "MannerismsPosturing", "Grandiosity",
+  "DepressiveMood", "Hostility", "Suspiciousness", "HallucinatoryBehav",
+  "MotorRetard", "Uncooperativeness", "UnusualThoughtContent", "BluntedAffect",
+  "Excitement", "Disorientation",
+
+  "GBI_Depression_total", "GBI_Hypomanic_total"
+)
+
+fit_one <- function(ycol) {
+
+  # Determine dropout pattern per ID
+  last_obs <- data %>%
+    group_by(ID) %>%
+    summarize(
+      last_time = if (all(is.na(.data[[ycol]]))) NA_real_
+                  else max(as.numeric(as.character(ExamType))[!is.na(.data[[ycol]])]),
+      .groups = "drop"
+    ) %>%
+    mutate(drop_pattern = ifelse(is.na(last_time) | last_time == 1, "Dropout", "Complete"))
+
+  dat <- data %>%
+    left_join(last_obs, by = "ID") %>%
+    filter(!is.na(.data[[ycol]]), !is.na(race), !is.na(sex), !is.na(Age)) %>%
+    mutate(drop_pattern = factor(drop_pattern, levels = c("Complete", "Dropout")))
+
+  # MAR model
+  f_mar <- reformulate(
+    termlabels = c("ExamType", "(1|ID)"),
+    response = ycol
+  )
+  mod_MAR <- lmer(f_mar, data = dat, REML = FALSE)
+
+  # PMM model
+  f_pmm <- reformulate(
+    termlabels = c("ExamType*drop_pattern", "race", "sex", "Age", "BMI", "(1|ID)"),
+    response = ycol
+  )
+  mod_PMM <- lmer(f_pmm, data = dat, REML = FALSE)
+
+  # LRT
+  a <- anova(mod_MAR, mod_PMM)
+  chisq <- a$Chisq[2]
+  pval <- a$`Pr(>Chisq)`[2]
+
+  tibble(
+    Outcome = ycol,
+    AIC_MAR = round(AIC(mod_MAR), 1),
+    Deviance_MAR = round(deviance(mod_MAR), 1),
+    AIC_PMM = round(AIC(mod_PMM), 1),
+    Deviance_PMM = round(deviance(mod_PMM), 1),
+    `Chi-square` = round(chisq, 2),
+    `p-value` = round(pval, 4)
+  )
+}
+
+results_tbl <- bind_rows(lapply(outcomes, fit_one))
+results_tbl <- results_tbl %>%
+  mutate(`p-value_FDR` = round(p.adjust(`p-value`, method = "BH"), 4))
+results_tbl
+```

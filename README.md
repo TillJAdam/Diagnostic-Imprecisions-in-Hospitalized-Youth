@@ -14,8 +14,8 @@ Written and shared by Till Julius Adam.
 - Open RStudio
 - Click on "file" in the top left corner, navigate to the .Rmd file you want to run
 - Open and click on the green triangle in the top right or use shortcut "CTRL + Alt + R"
-- Scripts are numbered and should be run in order (1-10)
-- The figure script (figure_heatmap.py) can be run after script 8
+- Scripts are numbered and should be run in order (1-9)
+- The figure script (figure_heatmap.py) can be run after script 7
 
 -> Expected time to run all scripts: <10 minutes
 
@@ -23,3 +23,18 @@ Written and shared by Till Julius Adam.
 Note that since this repository is for code peer review, the .xlsx data file is a ***simulation*** of the original clinical data, not the original data.
 Hence, the ***results will not match*** the results in the submitted manuscript.
 To replicate this study, similar clinical data would have to be collected from hospitalized youth with structured diagnostic interviews, and the code would be able to run on it.
+
+## Script overview
+
+| Script | Output |
+|--------|--------|
+| 1_baseline_characteristics | Table 1, Table S2 |
+| 2_diagnostic_imprecision | Table 2, Table S6 |
+| 3_di_persistence | Table S5, Table S7 |
+| 4_medication_transitions | Table S3 |
+| 5_imputation | Imputed datasets (×8 disorders) |
+| 6_multivariable_associations | Table 3 |
+| 7_misclassification_matrices | Figure data |
+| 8_nonindicated_prescriptions | Table 4, Table S8 |
+| 9_mar_sensitivity | Table S4 |
+| figure_heatmap.py | Figure (heatmap) |

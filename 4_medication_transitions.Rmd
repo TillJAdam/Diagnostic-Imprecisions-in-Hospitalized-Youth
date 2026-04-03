@@ -1,0 +1,87 @@
+---
+title: "data: Medication Transitions (Table S3)"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(dplyr)
+library(writexl)
+```
+
+```{r load-data}
+data <- read_excel("data_simulated.xlsx")
+data <- data[data$ExamType == 1, ]
+```
+
+```{r define-drugs}
+drug_classes <- list(
+  Antipsychotic = c("Antipsychotic", "Aripiprazole", "Risperidone", "Quetiapine",
+                    "Ziprasidone", "Paliperidone", "Chlorpromazine", "Olanzapine", "Latuda"),
+  Antidepressant = c("Antidepressant", "Citalopram", "Escitalopram", "Fluoxetine",
+                     "Venlafaxine", "Cymbalta", "Bupropion", "Sertraline", "Elavil",
+                     "Paroxetine", "Amitriptyline", "Mirtazapine", "Pristiq", "Luvox",
+                     "Nortriptyline", "Trazodone"),
+  Mood_Stabilizer = c("Mood_Stabilizer", "Lithium", "Lamotrigine", "Depakote",
+                      "Divalproex Sodium Er"),
+  Anxiolytic_Hypnotic = c("Anxiolytic_Hypnotic", "Lorazepam", "Clonazepam",
+                          "Diphenhydramine", "Hydroxyzine", "Buspar", "Melatonin"),
+  Stimulant = c("Stimulant", "Concerta", "Adderall", "Focalin", "Vyvanse",
+                "Strattera", "Guanfacine HC", "Clonidine")
+)
+```
+
+```{r transition-analysis}
+results <- data.frame()
+
+for (class_name in names(drug_classes)) {
+  for (drug in drug_classes[[class_name]]) {
+
+    col_d <- paste0(drug, "_discharge")
+    col_6 <- paste0(drug, "_6mo")
+
+    if (!(col_d %in% names(data) & col_6 %in% names(data))) next
+
+    d <- data[[col_d]]
+    m <- data[[col_6]]
+
+    valid <- !is.na(d) & !is.na(m)
+    d <- d[valid]
+    m <- m[valid]
+
+    n_paired <- length(d)
+    continued <- sum(d == 1 & m == 1)
+    never <- sum(d == 0 & m == 0)
+    discontinued <- sum(d == 1 & m == 0)
+    started <- sum(d == 0 & m == 1)
+
+    results <- rbind(results, data.frame(
+      Class = class_name,
+      Drug = drug,
+      N_paired = n_paired,
+      Continued_1_1 = continued,
+      Never_0_0 = never,
+      Discontinued_1_0 = discontinued,
+      Started_0_1 = started,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+```
+
+```{r format-output}
+N <- results$N_paired
+
+results <- results %>%
+  mutate(
+    Continued_1_1 = paste0(Continued_1_1, " (", format(round(Continued_1_1 / N * 100, 1), nsmall = 1), ")"),
+    Never_0_0 = paste0(Never_0_0, " (", format(round(Never_0_0 / N * 100, 1), nsmall = 1), ")"),
+    Discontinued_1_0 = paste0(Discontinued_1_0, " (", format(round(Discontinued_1_0 / N * 100, 1), nsmall = 1), ")"),
+    Started_0_1 = paste0(Started_0_1, " (", format(round(Started_0_1 / N * 100, 1), nsmall = 1), ")")
+  )
+
+results
+```

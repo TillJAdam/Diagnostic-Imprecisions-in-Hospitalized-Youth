@@ -1,0 +1,219 @@
+---
+title: "data: Persistence of Diagnostic Imprecision (Table S5, Table S7)"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(dplyr)
+library(writexl)
+```
+
+```{r load-data}
+data <- read_excel("data_simulated.xlsx")
+```
+
+```{r define-disorders}
+broad_categories <- c(
+  "AttentionDeficitHyperactivityDisorder",
+  "SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  "BipolarAndRelatedDisorder",
+  "DepressiveDisorder",
+  "AnxietyDisorder",
+  "ObsessiveCompulsiveAndRelatedDisorders",
+  "TraumaAndStressorRelatedDisorder",
+  "FeedingAndEatingDisorders",
+  "DisruptiveImpulseControlAndConductDisorders",
+  "SubstanceAbuse",
+  "PersonalityDisorder"
+)
+
+individual_diagnoses <- c(
+  "AttentionDeficitHyperactivityDisorderCombinedType",
+  "AttentionDeficitHyperactivityDisorderPredominantlyHyperacti",
+  "AttentionDeficitHyperactivityDisorderPredominantlyInattenti",
+  "AttentionDeficitHyperactivityDisorderNOS",
+  "Schizophrenia",
+  "SchizotypalPersonalityDisorder",
+  "SchizophreniformDisorder",
+  "SchizoaffectiveDisorder",
+  "DelusionalDisorder",
+  "BriefPsychoticDisorder",
+  "PsychoticDisorderNOS",
+  "CannabisInducedPsychoticDisorderWithDelusions",
+  "CannabisInducedPsychoticDisorderWithHallucinations",
+  "PsychosisProdrome",
+  "AttenuatedPsychosisSyndromeAPS",
+  "BipolarIDisorder",
+  "BipolarIIDisorder",
+  "UnspecifiedBipolarAndRelatedDisorder",
+  "OtherSpecifiedBipolarandRelatedDisorder",
+  "BipolarIDisorderMostRecentEpisodeDepressedInFullRemission",
+  "BipolarIDisorderMostRecentEpisodeDepressedModerate",
+  "BipolarIDisorderMostRecentEpisodeDepressedSevereWithoutPsych",
+  "BipolarIDisorderMostRecentEpisodeDepressedSevereWithPsychoti",
+  "BipolarIDisorderMostRecentEpisodeDepressedUnspecified",
+  "BipolarIDisorderMostRecentEpisodeManicInFullRemission",
+  "BipolarIDisorderMostRecentEpisodeManicInPartialRemission",
+  "BipolarIDisorderMostRecentEpisodeManicMild",
+  "BipolarIDisorderMostRecentEpisodeManicModerate",
+  "BipolarIDisorderMostRecentEpisodeManicSevereWithoutPsychotic",
+  "BipolarIDisorderMostRecentEpisodeManicSevereWithPsychoticFea",
+  "BipolarIDisorderMostRecentEpisodeMixedModerate",
+  "BipolarIDisorderMostRecentEpisodeMixedSevereWithoutPsychoti",
+  "BipolarIDisorderMostRecentEpisodeMixedSevereWithPsychoticFe",
+  "BipolarIDisorderMostRecentEpisodeUnspecified",
+  "BipolarIDisorderSingleManicEpisodeModerate",
+  "BipolarIDisorderSingleManicEpisodeSevereWithPsychoticFeature",
+  "BipolarIDisorderSingleManicEpisodeSevereWithoutPsychoticFea",
+  "MajorDepressiveDisorder",
+  "PersistentDepressiveDisorder",
+  "OtherSpecifiedDepressiveDisorder",
+  "UnspecifiedDepressiveDisorder",
+  "DisruptiveMoodDysregulationDisorder",
+  "MajorDepressiveDisorderRecurrentInFullRemission",
+  "MajorDepressiveDisorderRecurrentInPartialRemission",
+  "MajorDepressiveDisorderRecurrentMild",
+  "MajorDepressiveDisorderRecurrentModerate",
+  "MajorDepressiveDisorderRecurrentSevereWithoutPsychoticFeatur",
+  "MajorDepressiveDisorderRecurrentSevereWithPsychoticFeatures",
+  "MajorDepressiveDisorderRecurrentUnspecified",
+  "MajorDepressiveDisorderSingleEpisodeInFullRemission",
+  "MajorDepressiveDisorderSingleEpisodeInPartialRemission",
+  "MajorDepressiveDisorderSingleEpisodeMild",
+  "MajorDepressiveDisorderSingleEpisodeModerate",
+  "MajorDepressiveDisorderSingleEpisodeSevereWithoutPsychoticFe",
+  "MajorDepressiveDisorderSingleEpisodeSevereWithPsychoticFeatu",
+  "MajorDepressiveDisorderSingleEpisodeUnspecified",
+  "MajorDepressiveDisorderwithmixedfeatures",
+  "GeneralizedAnxietyDisorder",
+  "SocialPhobia",
+  "SpecificPhobia",
+  "PanicDisorderWithAgoraphobia",
+  "PanicDisorderWithoutAgoraphobia",
+  "PanicAttack",
+  "SeparationAnxietyDisorder",
+  "AgoraphobiaWithoutHistoryofPanicDisorder",
+  "AnxietyDisorderDuetoGeneralMedicalCondition",
+  "AnxietyDisorderNOS",
+  "ObsessiveCompulsiveDisorder",
+  "BodyDysmorphicDisorder",
+  "AdjustmentDisorder",
+  "AdjustmentDisorderUnspecified",
+  "AdjustmentDisorderWithDepressedMood",
+  "AdjustmentDisorderWithDisturbanceofConduct",
+  "AdjustmentDisorderWithMixedAnxietyandDepressedMood",
+  "AdjustmentDisorderWithMixedDisturbanceofEmotionsandConduct",
+  "PosttraumaticStressDisorder",
+  "ReactiveAttachmentDisorderofInfancyorEarlyChildhood",
+  "AnorexiaNervosa",
+  "BulimiaNervosa",
+  "BingeEatingDisorder",
+  "EatingDisorderNOS",
+  "IntermittentExplosiveDisorder",
+  "ConductDisorder",
+  "OppositionalDefiantDisorder",
+  "DisruptiveBehaviorDisorderNOS",
+  "ImpulseControlDisorderNOS",
+  "AlcoholUse",
+  "AlcoholAbuse",
+  "AlcoholDependence",
+  "CannabisUse",
+  "CannabisAbuse",
+  "CannabisDependence",
+  "AmphetamineAbuse",
+  "CocaineAbuse",
+  "SedativeHypnoticorAnxiolyticAbuse",
+  "PolysubstanceDependence",
+  "OtherorUnknownSubstanceAbuse",
+  "InhalantAbuse",
+  "OpioidAbuse",
+  "PhencyclidineAbuse",
+  "AntisocialPersonalityDisorder",
+  "AvoidantPersonalityDisorder",
+  "BorderlinePersonalityDisorder",
+  "BorderlinePersonalityTrait",
+  "NarcissisticPersonalityDisorder",
+  "ParanoidPersonalityDisorder",
+  "PersonalityDisorderNOS"
+)
+
+disorders <- c(broad_categories, individual_diagnoses)
+```
+
+```{r create-paired-data}
+df_discharge <- data %>% filter(ExamType == 1)
+df_6mo <- data %>% filter(ExamType == 2)
+
+paired_ids <- intersect(unique(df_discharge$ID), unique(df_6mo$ID))
+
+df_paired_discharge <- df_discharge %>% filter(ID %in% paired_ids) %>% arrange(ID)
+df_paired_6mo <- df_6mo %>% filter(ID %in% paired_ids) %>% arrange(ID)
+
+cat("N paired patients:", length(paired_ids), "\n")
+```
+
+```{r transition-analysis}
+compute_transitions <- function(disorder_list, df_discharge, df_6mo, data) {
+  results <- data.frame(
+    Disorder = character(),
+    N_paired = integer(),
+    FP_persisted = integer(),
+    FP_corrected = integer(),
+    FN_persisted = integer(),
+    FN_corrected = integer(),
+    New_FP = integer(),
+    New_FN = integer(),
+    stringsAsFactors = FALSE
+  )
+
+  for (disorder in disorder_list) {
+    sdm_col <- paste0("SDM_", disorder)
+    if (!(sdm_col %in% names(data))) next
+
+    sdm_t1 <- df_discharge[[sdm_col]]
+    sdm_t2 <- df_6mo[[sdm_col]]
+
+    valid <- !is.na(sdm_t1) & !is.na(sdm_t2)
+    sdm_t1 <- sdm_t1[valid]
+    sdm_t2 <- sdm_t2[valid]
+
+    n_paired <- length(sdm_t1)
+
+    fp_at_t1 <- sdm_t1 == "FP"
+    fp_persisted <- sum(fp_at_t1 & sdm_t2 == "FP")
+    fp_corrected <- sum(fp_at_t1 & sdm_t2 %in% c("TN", "TP"))
+
+    fn_at_t1 <- sdm_t1 == "FN"
+    fn_persisted <- sum(fn_at_t1 & sdm_t2 == "FN")
+    fn_corrected <- sum(fn_at_t1 & sdm_t2 %in% c("TN", "TP"))
+
+    concordant_at_t1 <- sdm_t1 %in% c("TN", "TP")
+    new_fp <- sum(concordant_at_t1 & sdm_t2 == "FP")
+    new_fn <- sum(concordant_at_t1 & sdm_t2 == "FN")
+
+    results <- rbind(results, data.frame(
+      Disorder = disorder,
+      N_paired = n_paired,
+      FP_persisted = fp_persisted,
+      FP_corrected = fp_corrected,
+      FN_persisted = fn_persisted,
+      FN_corrected = fn_corrected,
+      New_FP = new_fp,
+      New_FN = new_fn,
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  return(results)
+}
+
+results_broad <- compute_transitions(broad_categories, df_paired_discharge, df_paired_6mo, data)
+results_individual <- compute_transitions(individual_diagnoses, df_paired_discharge, df_paired_6mo, data)
+
+results_broad
+results_individual
+```

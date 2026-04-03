@@ -1,0 +1,203 @@
+---
+title: "Nonindicated Prescriptions and Diagnostic Imprecision (Table 4, Table S8)"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(dplyr)
+library(writexl)
+library(glue)
+library(broom)
+```
+
+```{r load-data}
+data <- read_excel("data_simulated.xlsx")
+data <- data[data$ExamType == 1, ]
+factor_cols <- c( "sex", "race", "AdoptedPatient", "Siblings", "Family_History_Any", "Smoking", "Antipsychotic_discharge", "Antidepressant_discharge", "Mood_Stabilizer_discharge", "Anxiolytic_Hypnotic_discharge", "Stimulant_discharge", "R_AttentionDeficitHyperactivityDisorder", "R_SchizophreniaSpectrumAndOtherPsychoticDisorder", "R_BipolarAndRelatedDisorder", "R_DepressiveDisorder", "R_AnxietyDisorder", "R_ObsessiveCompulsiveAndRelatedDisorders", "R_TraumaAndStressorRelatedDisorder", "R_FeedingAndEatingDisorders", "R_DisruptiveImpulseControlAndConductDisorders", "R_SubstanceAbuse", "R_PersonalityDisorder", "Ch_AttentionDeficitHyperactivityDisorder", "Ch_SchizophreniaSpectrumAndOtherPsychoticDisorder", "Ch_BipolarAndRelatedDisorder", "Ch_DepressiveDisorder", "Ch_AnxietyDisorder", "Ch_ObsessiveCompulsiveAndRelatedDisorders", "Ch_TraumaAndStressorRelatedDisorder", "Ch_FeedingAndEatingDisorders", "Ch_DisruptiveImpulseControlAndConductDisorders", "Ch_SubstanceAbuse", "Ch_PersonalityDisorder" )
+data[factor_cols] <- lapply(data[factor_cols], as.factor)
+```
+
+```{r table-4-nonindicated}
+# === CONFIGURATION ===
+predictor_type <- "FPvTNFN"  # Options: "FPvTN" or "FPvTNFN"
+
+# === DEFINITIONS ===
+disorders <- c(
+  "AttentionDeficitHyperactivityDisorder",
+  "SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  "BipolarAndRelatedDisorder",
+  "DepressiveDisorder",
+  "DisruptiveImpulseControlAndConductDisorders",
+  "AnxietyDisorder",
+  "ObsessiveCompulsiveAndRelatedDisorders",
+  "TraumaAndStressorRelatedDisorder"
+)
+
+drug_classes <- c("Antipsychotic", "Antidepressant", "Mood_Stabilizer", "Stimulant", "Anxiolytic_Hypnotic")
+
+# === MAIN LOOP: COLLECT RAW RESULTS ===
+raw_results <- data.frame(
+  disorder = character(),
+  drug_class = character(),
+  or = numeric(),
+  ci_low = numeric(),
+  ci_high = numeric(),
+  p = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (i in seq_along(disorders)) {
+  pred_col <- paste0(predictor_type, "_", disorders[i])
+
+  for (j in seq_along(drug_classes)) {
+    outcome_col <- paste0("nonindicated_", drug_classes[j], "_discharge")
+
+    df <- data[!is.na(data[[pred_col]]) & !is.na(data[[outcome_col]]), ]
+
+    row <- data.frame(
+      disorder = disorders[i],
+      drug_class = drug_classes[j],
+      or = NA_real_, ci_low = NA_real_, ci_high = NA_real_, p = NA_real_
+    )
+
+    if (nrow(df) >= 10 && length(unique(df[[pred_col]])) >= 2) {
+      tryCatch({
+        model <- glm(reformulate(c(pred_col, "sex", "Age", "race"), outcome_col),
+                     data = df, family = binomial)
+        sm <- summary(model)$coefficients
+        if (pred_col %in% rownames(sm)) {
+          est <- sm[pred_col, "Estimate"]
+          se <- sm[pred_col, "Std. Error"]
+          row$or <- exp(est)
+          row$ci_low <- exp(est - 1.96 * se)
+          row$ci_high <- exp(est + 1.96 * se)
+          row$p <- sm[pred_col, "Pr(>|z|)"]
+        }
+      }, error = function(e) {})
+    }
+
+    raw_results <- rbind(raw_results, row)
+  }
+}
+
+# === FDR CORRECTION ===
+raw_results$p_fdr <- p.adjust(raw_results$p, method = "BH")
+
+# === FORMAT FUNCTIONS ===
+format_p <- function(p) {
+  if (is.na(p)) return("—")
+  if (p < 0.0001) return("<0.0001")
+  sprintf("%.4f", p)
+}
+
+format_or_ci <- function(or, ci_low, ci_high) {
+  if (is.na(or)) return("—")
+  sprintf("%.2f (%.2f, %.2f)", or, ci_low, ci_high)
+}
+
+# === BUILD OUTPUT MATRIX ===
+row_names <- as.vector(rbind(
+  paste0(drug_classes, "_OR"),
+  paste0(drug_classes, "_p")
+))
+
+results <- matrix(NA_character_, nrow = length(drug_classes) * 2, ncol = length(disorders),
+                  dimnames = list(row_names, disorders))
+
+for (k in seq_len(nrow(raw_results))) {
+  i <- match(raw_results$disorder[k], disorders)
+  j <- match(raw_results$drug_class[k], drug_classes)
+
+  results[(j - 1) * 2 + 1, i] <- format_or_ci(raw_results$or[k], raw_results$ci_low[k], raw_results$ci_high[k])
+  results[(j - 1) * 2 + 2, i] <- format_p(raw_results$p_fdr[k])
+}
+
+# === EXPORT ===
+results_df <- data.frame(Metric = rownames(results), results, row.names = NULL, check.names = FALSE)
+write_xlsx(results_df, paste0("Table_4_Nonindicated_", predictor_type, "_FDR.xlsx"))
+```
+
+```{r underdiagnosis-schizophrenia-antipsychotics}
+pred_col <- "FNvTPTN_SchizophreniaSpectrumAndOtherPsychoticDisorder"
+outcome_col <- "Antipsychotic_discharge"
+censor_col <- "censor_underdx_Antipsychotic_discharge"
+
+df_under_all <- data[
+  !is.na(data[[pred_col]]) &
+  !is.na(data[[outcome_col]]) &
+  !is.na(data[[censor_col]]),
+]
+df_under <- df_under_all[df_under_all[[censor_col]] == 0, ]
+df_under[[pred_col]] <- factor(df_under[[pred_col]], levels = c(0, 1))
+
+model_under <- glm(
+  reformulate(c(pred_col, "sex", "Age", "race"), outcome_col),
+  data = df_under, family = binomial
+)
+summary(model_under)
+```
+
+```{r table-s8-prescriptions-discordant}
+# === Table S8: Medication frequencies in FP and FN patients per disorder ===
+
+# Individual drug discharge columns
+drug_cols <- c(
+  "Aripiprazole_discharge", "Risperidone_discharge", "Quetiapine_discharge",
+  "Ziprasidone_discharge", "Paliperidone_discharge", "Chlorpromazine_discharge",
+  "Olanzapine_discharge", "Latuda_discharge",
+  "Citalopram_discharge", "Escitalopram_discharge", "Fluoxetine_discharge",
+  "Venlafaxine_discharge", "Cymbalta_discharge", "Bupropion_discharge",
+  "Sertraline_discharge", "Elavil_discharge", "Paroxetine_discharge",
+  "Amitriptyline_discharge", "Mirtazapine_discharge", "Pristiq_discharge",
+  "Luvox_discharge", "Nortriptyline_discharge", "Trazodone_discharge",
+  "Lithium_discharge", "Lamotrigine_discharge", "Depakote_discharge",
+  "Divalproex Sodium Er_discharge",
+  "Lorazepam_discharge", "Clonazepam_discharge", "Diphenhydramine_discharge",
+  "Hydroxyzine_discharge", "Buspar_discharge", "Melatonin_discharge",
+  "Concerta_discharge", "Adderall_discharge", "Focalin_discharge",
+  "Vyvanse_discharge", "Strattera_discharge", "Guanfacine HC_discharge",
+  "Clonidine_discharge"
+)
+
+# Keep only drug columns that exist in the data
+drug_cols <- drug_cols[drug_cols %in% names(data)]
+
+table_s8 <- data.frame(
+  Disorder = character(),
+  DiagnosticStatus = character(),
+  Drug = character(),
+  N = integer(),
+  Pct = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (disorder in disorders) {
+  sdm_col <- paste0("SDM_", disorder)
+  if (!sdm_col %in% names(data)) next
+
+  for (status in c("FP", "FN")) {
+    subset_df <- data[data[[sdm_col]] == status, ]
+    n_group <- nrow(subset_df)
+    if (n_group == 0) next
+
+    for (drug in drug_cols) {
+      n_on <- sum(subset_df[[drug]] == 1, na.rm = TRUE)
+      if (n_on == 0) next
+      table_s8 <- rbind(table_s8, data.frame(
+        Disorder = disorder,
+        DiagnosticStatus = status,
+        Drug = sub("_discharge$", "", drug),
+        N = n_on,
+        Pct = round(100 * n_on / n_group, 1),
+      stringsAsFactors = FALSE
+      ))
+    }
+  }
+}
+
+table_s8
+```

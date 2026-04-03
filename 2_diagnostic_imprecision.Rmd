@@ -1,0 +1,451 @@
+---
+title: "data: Diagnostic Imprecision Metrics (Table 2, Table S6)"
+author: "Till Julius Adam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(dplyr)
+library(writexl)
+```
+
+# 1. Load Data and Define Disorders
+
+```{r load-data}
+data <- read_excel("data_simulated.xlsx")
+```
+
+```{r define-disorders}
+# 11 broad disorder categories (Table 2)
+broad_categories <- c(
+  "AttentionDeficitHyperactivityDisorder",
+  "SchizophreniaSpectrumAndOtherPsychoticDisorder",
+  "BipolarAndRelatedDisorder",
+  "DepressiveDisorder",
+  "AnxietyDisorder",
+  "ObsessiveCompulsiveAndRelatedDisorders",
+  "TraumaAndStressorRelatedDisorder",
+  "FeedingAndEatingDisorders",
+  "DisruptiveImpulseControlAndConductDisorders",
+  "SubstanceAbuse",
+  "PersonalityDisorder"
+)
+
+# Selected individual diagnoses (also in Table 2)
+selected_individual <- c(
+  "MajorDepressiveDisorder",
+  "GeneralizedAnxietyDisorder",
+  "SocialPhobia",
+  "PosttraumaticStressDisorder",
+  "ObsessiveCompulsiveDisorder",
+  "BipolarIDisorder",
+  "BipolarIIDisorder",
+  "Schizophrenia",
+  "SchizoaffectiveDisorder",
+  "AnorexiaNervosa",
+  "BulimiaNervosa",
+  "ConductDisorder",
+  "OppositionalDefiantDisorder",
+  "BorderlinePersonalityDisorder",
+  "PersistentDepressiveDisorder",
+  "PanicDisorderWithoutAgoraphobia",
+  "AdjustmentDisorder"
+)
+
+# All individual diagnoses (Table S6)
+all_individual <- c(
+  # ADHD
+  "AttentionDeficitHyperactivityDisorderCombinedType",
+  "AttentionDeficitHyperactivityDisorderPredominantlyHyperacti",
+  "AttentionDeficitHyperactivityDisorderPredominantlyInattenti",
+  "AttentionDeficitHyperactivityDisorderNOS",
+
+  # Schizophrenia Spectrum
+  "Schizophrenia",
+  "SchizotypalPersonalityDisorder",
+  "SchizophreniformDisorder",
+  "SchizoaffectiveDisorder",
+  "DelusionalDisorder",
+  "BriefPsychoticDisorder",
+  "PsychoticDisorderNOS",
+  "CannabisInducedPsychoticDisorderWithDelusions",
+  "CannabisInducedPsychoticDisorderWithHallucinations",
+  "PsychosisProdrome",
+  "AttenuatedPsychosisSyndromeAPS",
+
+  # Bipolar Disorders
+  "BipolarIDisorder",
+  "BipolarIIDisorder",
+  "UnspecifiedBipolarAndRelatedDisorder",
+  "OtherSpecifiedBipolarandRelatedDisorder",
+  "BipolarIDisorderMostRecentEpisodeDepressedInFullRemission",
+  "BipolarIDisorderMostRecentEpisodeDepressedModerate",
+  "BipolarIDisorderMostRecentEpisodeDepressedSevereWithoutPsych",
+  "BipolarIDisorderMostRecentEpisodeDepressedSevereWithPsychoti",
+  "BipolarIDisorderMostRecentEpisodeDepressedUnspecified",
+  "BipolarIDisorderMostRecentEpisodeManicInFullRemission",
+  "BipolarIDisorderMostRecentEpisodeManicInPartialRemission",
+  "BipolarIDisorderMostRecentEpisodeManicMild",
+  "BipolarIDisorderMostRecentEpisodeManicModerate",
+  "BipolarIDisorderMostRecentEpisodeManicSevereWithoutPsychotic",
+  "BipolarIDisorderMostRecentEpisodeManicSevereWithPsychoticFea",
+  "BipolarIDisorderMostRecentEpisodeMixedModerate",
+  "BipolarIDisorderMostRecentEpisodeMixedSevereWithoutPsychoti",
+  "BipolarIDisorderMostRecentEpisodeMixedSevereWithPsychoticFe",
+  "BipolarIDisorderMostRecentEpisodeUnspecified",
+  "BipolarIDisorderSingleManicEpisodeModerate",
+  "BipolarIDisorderSingleManicEpisodeSevereWithPsychoticFeature",
+  "BipolarIDisorderSingleManicEpisodeSevereWithoutPsychoticFea",
+
+  # Depressive Disorders
+  "MajorDepressiveDisorder",
+  "PersistentDepressiveDisorder",
+  "OtherSpecifiedDepressiveDisorder",
+  "UnspecifiedDepressiveDisorder",
+  "DisruptiveMoodDysregulationDisorder",
+  "MajorDepressiveDisorderRecurrentInFullRemission",
+  "MajorDepressiveDisorderRecurrentInPartialRemission",
+  "MajorDepressiveDisorderRecurrentMild",
+  "MajorDepressiveDisorderRecurrentModerate",
+  "MajorDepressiveDisorderRecurrentSevereWithoutPsychoticFeatur",
+  "MajorDepressiveDisorderRecurrentSevereWithPsychoticFeatures",
+  "MajorDepressiveDisorderRecurrentUnspecified",
+  "MajorDepressiveDisorderSingleEpisodeInFullRemission",
+  "MajorDepressiveDisorderSingleEpisodeInPartialRemission",
+  "MajorDepressiveDisorderSingleEpisodeMild",
+  "MajorDepressiveDisorderSingleEpisodeModerate",
+  "MajorDepressiveDisorderSingleEpisodeSevereWithoutPsychoticFe",
+  "MajorDepressiveDisorderSingleEpisodeSevereWithPsychoticFeatu",
+  "MajorDepressiveDisorderSingleEpisodeUnspecified",
+  "MajorDepressiveDisorderwithmixedfeatures",
+
+  # Anxiety Disorders
+  "GeneralizedAnxietyDisorder",
+  "SocialPhobia",
+  "SpecificPhobia",
+  "PanicDisorderWithAgoraphobia",
+  "PanicDisorderWithoutAgoraphobia",
+  "PanicAttack",
+  "SeparationAnxietyDisorder",
+  "AgoraphobiaWithoutHistoryofPanicDisorder",
+  "AnxietyDisorderDuetoGeneralMedicalCondition",
+  "AnxietyDisorderNOS",
+
+  # OCD and Related
+  "ObsessiveCompulsiveDisorder",
+  "BodyDysmorphicDisorder",
+
+  # Trauma and Adjustment
+  "AdjustmentDisorder",
+  "AdjustmentDisorderUnspecified",
+  "AdjustmentDisorderWithDepressedMood",
+  "AdjustmentDisorderWithDisturbanceofConduct",
+  "AdjustmentDisorderWithMixedAnxietyandDepressedMood",
+  "AdjustmentDisorderWithMixedDisturbanceofEmotionsandConduct",
+  "PosttraumaticStressDisorder",
+  "ReactiveAttachmentDisorderofInfancyorEarlyChildhood",
+
+  # Eating Disorders
+  "AnorexiaNervosa",
+  "BulimiaNervosa",
+  "BingeEatingDisorder",
+  "EatingDisorderNOS",
+
+  # Disruptive and Conduct
+  "IntermittentExplosiveDisorder",
+  "ConductDisorder",
+  "OppositionalDefiantDisorder",
+  "DisruptiveBehaviorDisorderNOS",
+  "ImpulseControlDisorderNOS",
+
+  # Substance Use
+  "AlcoholUse",
+  "AlcoholAbuse",
+  "AlcoholDependence",
+  "CannabisUse",
+  "CannabisAbuse",
+  "CannabisDependence",
+  "AmphetamineAbuse",
+  "CocaineAbuse",
+  "SedativeHypnoticorAnxiolyticAbuse",
+  "PolysubstanceDependence",
+  "OtherorUnknownSubstanceAbuse",
+  "InhalantAbuse",
+  "OpioidAbuse",
+  "PhencyclidineAbuse",
+
+  # Personality Disorders
+  "AntisocialPersonalityDisorder",
+  "AvoidantPersonalityDisorder",
+  "Borderline",
+  "BorderlinePersonalityDisorder",
+  "BorderlinePersonalityTrait",
+  "NarcissisticPersonalityDisorder",
+  "ParanoidPersonalityDisorder",
+  "PersonalityDisorderNOS"
+)
+
+disorder_labels <- c(
+  # ADHD
+  "AttentionDeficitHyperactivityDisorder" = "ADHD",
+  "AttentionDeficitHyperactivityDisorderCombinedType" = "ADHD, combined type",
+  "AttentionDeficitHyperactivityDisorderPredominantlyHyperacti" = "ADHD, predominantly hyperactive",
+  "AttentionDeficitHyperactivityDisorderPredominantlyInattenti" = "ADHD, predominantly inattentive",
+  "AttentionDeficitHyperactivityDisorderNOS" = "ADHD NOS",
+
+  # Schizophrenia Spectrum
+  "SchizophreniaSpectrumAndOtherPsychoticDisorder" = "Schizophrenia spectrum",
+  "Schizophrenia" = "Schizophrenia",
+  "SchizotypalPersonalityDisorder" = "Schizotypal PD",
+  "SchizophreniformDisorder" = "Schizophreniform disorder",
+  "SchizoaffectiveDisorder" = "Schizoaffective disorder",
+  "DelusionalDisorder" = "Delusional disorder",
+  "BriefPsychoticDisorder" = "Brief psychotic disorder",
+  "PsychoticDisorderNOS" = "Psychotic disorder NOS",
+  "CannabisInducedPsychoticDisorderWithDelusions" = "Cannabis-induced psychosis, delusions",
+  "CannabisInducedPsychoticDisorderWithHallucinations" = "Cannabis-induced psychosis, hallucinations",
+  "PsychosisProdrome" = "Psychosis prodrome",
+  "AttenuatedPsychosisSyndromeAPS" = "Attenuated psychosis syndrome",
+
+  # Bipolar Disorders
+  "BipolarAndRelatedDisorder" = "Bipolar spectrum",
+  "BipolarIDisorder" = "Bipolar I",
+  "BipolarIIDisorder" = "Bipolar II",
+  "UnspecifiedBipolarAndRelatedDisorder" = "Bipolar, unspecified",
+  "OtherSpecifiedBipolarandRelatedDisorder" = "Other specified bipolar",
+  "BipolarIDisorderMostRecentEpisodeDepressedInFullRemission" = "Bipolar I, depressed, full remission",
+  "BipolarIDisorderMostRecentEpisodeDepressedModerate" = "Bipolar I, depressed, moderate",
+  "BipolarIDisorderMostRecentEpisodeDepressedSevereWithoutPsych" = "Bipolar I, depressed, severe",
+  "BipolarIDisorderMostRecentEpisodeDepressedSevereWithPsychoti" = "Bipolar I, depressed, severe w/ psychosis",
+  "BipolarIDisorderMostRecentEpisodeDepressedUnspecified" = "Bipolar I, depressed, unspecified",
+  "BipolarIDisorderMostRecentEpisodeManicInFullRemission" = "Bipolar I, manic, full remission",
+  "BipolarIDisorderMostRecentEpisodeManicInPartialRemission" = "Bipolar I, manic, partial remission",
+  "BipolarIDisorderMostRecentEpisodeManicMild" = "Bipolar I, manic, mild",
+  "BipolarIDisorderMostRecentEpisodeManicModerate" = "Bipolar I, manic, moderate",
+  "BipolarIDisorderMostRecentEpisodeManicSevereWithoutPsychotic" = "Bipolar I, manic, severe",
+  "BipolarIDisorderMostRecentEpisodeManicSevereWithPsychoticFea" = "Bipolar I, manic, severe w/ psychosis",
+  "BipolarIDisorderMostRecentEpisodeMixedModerate" = "Bipolar I, mixed, moderate",
+  "BipolarIDisorderMostRecentEpisodeMixedSevereWithoutPsychoti" = "Bipolar I, mixed, severe",
+  "BipolarIDisorderMostRecentEpisodeMixedSevereWithPsychoticFe" = "Bipolar I, mixed, severe w/ psychosis",
+  "BipolarIDisorderMostRecentEpisodeUnspecified" = "Bipolar I, unspecified episode",
+  "BipolarIDisorderSingleManicEpisodeModerate" = "Bipolar I, single manic, moderate",
+  "BipolarIDisorderSingleManicEpisodeSevereWithPsychoticFeature" = "Bipolar I, single manic, severe w/ psychosis",
+  "BipolarIDisorderSingleManicEpisodeSevereWithoutPsychoticFea" = "Bipolar I, single manic, severe",
+
+  # Depressive Disorders
+  "DepressiveDisorder" = "Depressive disorder",
+  "MajorDepressiveDisorder" = "MDD",
+  "PersistentDepressiveDisorder" = "Persistent depressive disorder",
+  "OtherSpecifiedDepressiveDisorder" = "Other specified depressive",
+  "UnspecifiedDepressiveDisorder" = "Depressive disorder, unspecified",
+  "DisruptiveMoodDysregulationDisorder" = "DMDD",
+  "MajorDepressiveDisorderRecurrentInFullRemission" = "MDD, recurrent, full remission",
+  "MajorDepressiveDisorderRecurrentInPartialRemission" = "MDD, recurrent, partial remission",
+  "MajorDepressiveDisorderRecurrentMild" = "MDD, recurrent, mild",
+  "MajorDepressiveDisorderRecurrentModerate" = "MDD, recurrent, moderate",
+  "MajorDepressiveDisorderRecurrentSevereWithoutPsychoticFeatur" = "MDD, recurrent, severe",
+  "MajorDepressiveDisorderRecurrentSevereWithPsychoticFeatures" = "MDD, recurrent, severe w/ psychosis",
+  "MajorDepressiveDisorderRecurrentUnspecified" = "MDD, recurrent, unspecified",
+  "MajorDepressiveDisorderSingleEpisodeInFullRemission" = "MDD, single, full remission",
+  "MajorDepressiveDisorderSingleEpisodeInPartialRemission" = "MDD, single, partial remission",
+  "MajorDepressiveDisorderSingleEpisodeMild" = "MDD, single, mild",
+  "MajorDepressiveDisorderSingleEpisodeModerate" = "MDD, single, moderate",
+  "MajorDepressiveDisorderSingleEpisodeSevereWithoutPsychoticFe" = "MDD, single, severe",
+  "MajorDepressiveDisorderSingleEpisodeSevereWithPsychoticFeatu" = "MDD, single, severe w/ psychosis",
+  "MajorDepressiveDisorderSingleEpisodeUnspecified" = "MDD, single, unspecified",
+  "MajorDepressiveDisorderwithmixedfeatures" = "MDD with mixed features",
+
+  # Anxiety Disorders
+  "AnxietyDisorder" = "Anxiety disorder",
+  "GeneralizedAnxietyDisorder" = "GAD",
+  "SocialPhobia" = "Social phobia",
+  "SpecificPhobia" = "Specific phobia",
+  "PanicDisorderWithAgoraphobia" = "Panic disorder w/ agoraphobia",
+  "PanicDisorderWithoutAgoraphobia" = "Panic disorder",
+  "PanicAttack" = "Panic attack",
+  "SeparationAnxietyDisorder" = "Separation anxiety",
+  "AgoraphobiaWithoutHistoryofPanicDisorder" = "Agoraphobia",
+  "AnxietyDisorderDuetoGeneralMedicalCondition" = "Anxiety due to medical condition",
+  "AnxietyDisorderNOS" = "Anxiety disorder NOS",
+
+  # OCD and Related
+  "ObsessiveCompulsiveAndRelatedDisorders" = "OCD spectrum",
+  "ObsessiveCompulsiveDisorder" = "OCD",
+  "BodyDysmorphicDisorder" = "Body dysmorphic disorder",
+
+  # Trauma and Adjustment
+  "TraumaAndStressorRelatedDisorder" = "Trauma/stressor-related",
+  "AdjustmentDisorder" = "Adjustment disorder",
+  "AdjustmentDisorderUnspecified" = "Adjustment disorder, unspecified",
+  "AdjustmentDisorderWithDepressedMood" = "Adjustment disorder, depressed",
+  "AdjustmentDisorderWithDisturbanceofConduct" = "Adjustment disorder, conduct",
+  "AdjustmentDisorderWithMixedAnxietyandDepressedMood" = "Adjustment disorder, mixed anxiety/depression",
+  "AdjustmentDisorderWithMixedDisturbanceofEmotionsandConduct" = "Adjustment disorder, mixed emotions/conduct",
+  "PosttraumaticStressDisorder" = "PTSD",
+  "ReactiveAttachmentDisorderofInfancyorEarlyChildhood" = "Reactive attachment disorder",
+
+  # Eating Disorders
+  "FeedingAndEatingDisorders" = "Feeding/eating disorders",
+  "AnorexiaNervosa" = "Anorexia nervosa",
+  "BulimiaNervosa" = "Bulimia nervosa",
+  "BingeEatingDisorder" = "Binge eating disorder",
+  "EatingDisorderNOS" = "Eating disorder NOS",
+
+  # Disruptive and Conduct
+  "DisruptiveImpulseControlAndConductDisorders" = "Disruptive/conduct disorders",
+  "IntermittentExplosiveDisorder" = "Intermittent explosive disorder",
+  "ConductDisorder" = "Conduct disorder",
+  "OppositionalDefiantDisorder" = "ODD",
+  "DisruptiveBehaviorDisorderNOS" = "Disruptive behavior NOS",
+  "ImpulseControlDisorderNOS" = "Impulse control NOS",
+
+  # Substance Use
+  "SubstanceAbuse" = "Substance use disorder",
+  "AlcoholUse" = "Alcohol use",
+  "AlcoholAbuse" = "Alcohol abuse",
+  "AlcoholDependence" = "Alcohol dependence",
+  "CannabisUse" = "Cannabis use",
+  "CannabisAbuse" = "Cannabis abuse",
+  "CannabisDependence" = "Cannabis dependence",
+  "AmphetamineAbuse" = "Amphetamine abuse",
+  "CocaineAbuse" = "Cocaine abuse",
+  "SedativeHypnoticorAnxiolyticAbuse" = "Sedative/hypnotic abuse",
+  "PolysubstanceDependence" = "Polysubstance dependence",
+  "OtherorUnknownSubstanceAbuse" = "Other substance abuse",
+  "InhalantAbuse" = "Inhalant abuse",
+  "OpioidAbuse" = "Opioid abuse",
+  "PhencyclidineAbuse" = "Phencyclidine abuse",
+
+  # Personality Disorders
+  "PersonalityDisorder" = "Personality disorder",
+  "AntisocialPersonalityDisorder" = "Antisocial PD",
+  "AvoidantPersonalityDisorder" = "Avoidant PD",
+  "Borderline" = "Borderline",
+  "BorderlinePersonalityDisorder" = "Borderline PD",
+  "BorderlinePersonalityTrait" = "Borderline traits",
+  "NarcissisticPersonalityDisorder" = "Narcissistic PD",
+  "ParanoidPersonalityDisorder" = "Paranoid PD",
+  "PersonalityDisorderNOS" = "Personality disorder NOS"
+)
+```
+
+# 2. Create Analysis Subset
+
+```{r create-subset}
+df_discharge <- data %>% filter(ExamType == 1)
+cat("N discharge:", nrow(df_discharge), "\n")
+```
+
+# 3. Helper Functions
+
+```{r helper-pabak}
+# PABAK = 2 * P0 - 1, where P0 = (TP + TN) / N
+# SE = sqrt(4/N * P0 * (1 - P0))
+# 95% CI = PABAK +/- 1.96 * SE
+compute_pabak <- function(R_vec, Ch_vec) {
+  result <- list(pabak = NA, CI_lower = NA, CI_upper = NA)
+
+  valid <- !is.na(R_vec) & !is.na(Ch_vec)
+  R_clean <- R_vec[valid]
+  Ch_clean <- Ch_vec[valid]
+
+  n <- length(R_clean)
+  if (n < 2) return(result)
+
+  P0 <- sum(R_clean == Ch_clean) / n
+  result$pabak <- 2 * P0 - 1
+
+  se <- sqrt(4 / n * P0 * (1 - P0))
+  result$CI_lower <- max(-1, result$pabak - 1.96 * se)
+  result$CI_upper <- min(1, result$pabak + 1.96 * se)
+
+  return(result)
+}
+```
+
+```{r helper-metrics}
+tabulate_sdm <- function(sdm_vec) {
+  counts <- table(factor(sdm_vec, levels = c("TN", "TP", "FN", "FP")))
+  list(TN = as.integer(counts["TN"]),
+       TP = as.integer(counts["TP"]),
+       FN = as.integer(counts["FN"]),
+       FP = as.integer(counts["FP"]))
+}
+
+compute_metrics <- function(TP, TN, FP, FN) {
+  sens <- ifelse((TP + FN) > 0, TP / (TP + FN), NA)
+  spec <- ifelse((TN + FP) > 0, TN / (TN + FP), NA)
+  ppv  <- ifelse((TP + FP) > 0, TP / (TP + FP), NA)
+  npv  <- ifelse((TN + FN) > 0, TN / (TN + FN), NA)
+  overdiag  <- ifelse((FP + TN) > 0, FP / (FP + TN), NA)
+  underdiag <- ifelse((FN + TP) > 0, FN / (FN + TP), NA)
+
+  fmt <- function(x) if (is.na(x)) NA_character_ else sprintf("%.2f", x)
+
+  list(Sensitivity = fmt(sens), Specificity = fmt(spec),
+       PPV = fmt(ppv), NPV = fmt(npv),
+       Overdiagnosis = fmt(overdiag), Underdiagnosis = fmt(underdiag))
+}
+```
+
+# 4. Analysis Function
+
+```{r analysis-function}
+compute_disorder_row <- function(disorder, df) {
+  sdm_col <- paste0("SDM_", disorder)
+  r_col   <- paste0("R_", disorder)
+  ch_col  <- paste0("Ch_", disorder)
+
+  if (!all(c(sdm_col, r_col, ch_col) %in% names(df))) return(NULL)
+
+  counts  <- tabulate_sdm(df[[sdm_col]])
+  metrics <- compute_metrics(counts$TP, counts$TN, counts$FP, counts$FN)
+  pabak   <- compute_pabak(df[[r_col]], df[[ch_col]])
+
+  label <- disorder_labels[disorder]
+  if (is.na(label)) label <- disorder
+
+  pabak_str <- if (!is.na(pabak$pabak)) sprintf("%.2f", pabak$pabak) else NA_character_
+  ci_str    <- if (!is.na(pabak$pabak)) sprintf("%.2f, %.2f", pabak$CI_lower, pabak$CI_upper) else NA_character_
+
+  data.frame(
+    Disorder       = label,
+    TN             = counts$TN,
+    TP             = counts$TP,
+    FN             = counts$FN,
+    FP             = counts$FP,
+    Sensitivity    = metrics$Sensitivity,
+    Specificity    = metrics$Specificity,
+    PPV            = metrics$PPV,
+    NPV            = metrics$NPV,
+    Overdiagnosis  = metrics$Overdiagnosis,
+    Underdiagnosis = metrics$Underdiagnosis,
+    PABAK          = pabak_str,
+    PABAK_95CI     = ci_str,
+    stringsAsFactors = FALSE
+  )
+}
+```
+
+# 5. Table 2: Broad Categories + Selected Individual Diagnoses
+
+```{r table-2}
+table2_disorders <- unique(c(broad_categories, selected_individual))
+
+table2 <- do.call(rbind, lapply(table2_disorders, compute_disorder_row, df = df_discharge))
+
+cat("Table 2:", nrow(table2), "disorders\n")
+table2
+```
+
+# 6. Table S6: All Individual Diagnoses
+
+```{r table-s6}
+table_s6 <- do.call(rbind, lapply(all_individual, compute_disorder_row, df = df_discharge))
+
+cat("Table S6:", nrow(table_s6), "disorders\n")
+table_s6
+```
